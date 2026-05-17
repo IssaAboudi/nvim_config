@@ -1,7 +1,7 @@
 local Terminal = require("toggleterm.terminal").Terminal
 
 local terms = {}
-local labels = { "  main", "  secondary", "  extra", "  scratch" }
+local labels = { "  main", "  secondary", "  extra", "  scratch", "  opencode" }
 
 local function get(n)
 	if not terms[n] then
@@ -13,6 +13,20 @@ end
 local last = 1
 local last_is_claude = false
 local M = {}
+local opencode_launched = false
+
+function M.toggle_opencode()
+	last = 5
+	last_is_claude = false
+	local term = get(5)
+	term:toggle()
+	if not opencode_launched then
+		opencode_launched = true
+		vim.schedule(function()
+			term:send("opencode", false)
+		end)
+	end
+end
 
 function M.toggle(n)
 	last = n
@@ -37,7 +51,6 @@ function M.picker()
 	local previewers = require("telescope.previewers")
 
 	local entries = {}
-	table.insert(entries, { idx = 5, label = "  claude", term = _G.__term_claude })
 	for i = 4, 1, -1 do
 		table.insert(entries, { idx = i, label = labels[i], term = get(i) })
 	end
@@ -72,11 +85,7 @@ function M.picker()
 				actions.select_default:replace(function()
 					actions.close(buf)
 					local sel = action_state.get_selected_entry().value
-					if sel.idx == 5 then
-						M.toggle_claude()
-					else
-						M.toggle(sel.idx)
-					end
+					M.toggle(sel.idx)
 				end)
 				return true
 			end,
@@ -84,39 +93,8 @@ function M.picker()
 		:find()
 end
 
----- old picker ----
--- function M.picker()
--- 	local items = {}
--- 	for i = 1, 4 do
--- 		table.insert(items, string.format("%d: %s", i, labels[i]))
--- 	end
--- 	table.insert(items, "5:  claude")
--- 	vim.ui.select(items, { prompt = "Select terminal:" }, function(_, idx)
--- 		if not idx then
--- 			return
--- 		end
--- 		if idx == 5 then
--- 			M.toggle_claude()
--- 		else
--- 			M.toggle(idx)
--- 		end
--- 	end)
--- end
-
-function M.toggle_claude()
-	last_is_claude = true
-	if not _G.__term_claude then
-		_G.__term_claude = Terminal:new({ direction = "float", cmd = "claude", hidden = true, close_on_exit = false })
-	end
-	_G.__term_claude:toggle()
-end
-
 function M.toggle_last()
-	if last_is_claude then
-		M.toggle_claude()
-	else
-		M.toggle(last)
-	end
+	M.toggle(last)
 end
 
 return M

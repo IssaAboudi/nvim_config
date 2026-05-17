@@ -4,13 +4,6 @@
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 
--- Filetype detection for Java
-vim.filetype.add({
-	extension = {
-		java = "java",
-	},
-})
-
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = false
 
@@ -244,6 +237,13 @@ vim.keymap.set("n", "<leader>pp", function()
 	vim.notify("Copied: " .. path)
 end, { desc = "Copy current file path" })
 
+-- copy current open fp with filename
+vim.keymap.set("n", "<leader>pa", function()
+	local path = vim.fn.expand("%:p")
+	vim.fn.setreg("+", path)
+	vim.notify("Copied: " .. path)
+end, { desc = "Copy path to current file" })
+
 -- paste around delimiter
 vim.keymap.set("n", "<leader>P", function()
 	local col = vim.fn.col(".")
@@ -355,6 +355,13 @@ end
 local rtp = vim.opt.rtp
 rtp:prepend(lazypath)
 
+-- Filetype detection for Java
+vim.filetype.add({
+	extension = {
+		java = "java",
+	},
+})
+
 -- [[ Configure and install plugins ]]
 --
 --  To check the current status of your plugins, run
@@ -436,14 +443,39 @@ require("lazy").setup({
 	-- you do for a plugin at the top level, you can do for a dependency.
 	--
 	-- Use the `dependencies` key to specify the dependencies of a particular plugin
-	{ "mfussenegger/nvim-jdtls" },
 	{
 		"tpope/vim-fugitive",
 	},
+
+	{
+		"arismoko/buddy.nvim",
+		dependencies = {
+			"nvim-mini/mini.nvim",
+			"nvim-neotest/nvim-nio",
+		},
+		lazy = false,
+		config = function()
+			require("buddy").setup({
+				auto_start = true,
+				port = 7234,
+				auth = false,
+			})
+		end,
+	},
+
 	{
 		"akinsho/toggleterm.nvim",
 		version = "*",
 		keys = {
+			-- opencode terminal
+			{
+				"<c-`>",
+				function()
+					require("config.terminals").toggle_opencode()
+				end,
+				desc = "OpenCode terminal",
+				mode = { "n", "t" },
+			},
 			-- individual terminals
 			{
 				"<c-1>",
@@ -493,7 +525,7 @@ require("lazy").setup({
 					require("config.terminals").toggle_last()
 				end,
 				desc = "Toggle last terminal",
-				mode = { "n", "t" },
+				mode = { "n", "t", "i" },
 			},
 		},
 		opts = {
@@ -570,7 +602,10 @@ require("lazy").setup({
 						end
 						local parts = vim.split(list_item.value, "/")
 						local n = #parts
-						return table.concat({ parts[n - 1], parts[n] }, "/")
+						if n == 1 then
+							return parts[1]
+						end
+						return string.format("%s/%s", parts[n - 1], parts[n])
 					end,
 				},
 			})
@@ -673,12 +708,12 @@ require("lazy").setup({
 
 			-- See `:help telescope.builtin`
 			local builtin = require("telescope.builtin")
-			vim.keymap.set("n", "<leader>sh", builtin.help_tags, { desc = "[S]earch [H]elp" })
+			--vim.keymap.set("n", "<leader>sh", builtin.help_tags, { desc = "[S]earch [H]elp" })
 			--vim.keymap.set("n", "<leader>sk", builtin.keymaps, { desc = "[S]earch [K]eymaps" })
 
 			--vim.keymap.set("n", "<leader>ss", builtin.builtin, { desc = "[S]earch [S]elect Telescope" })
-			vim.keymap.set("n", "<leader>ss", builtin.grep_string, { desc = "[S]earch thi[S] word" })
-			vim.keymap.set("n", "<leader>sw", builtin.live_grep, { desc = "[S]earch for [W]ord by grep" })
+			vim.keymap.set("n", "<leader>sw", builtin.grep_string, { desc = "[S]earch thi[S] word" })
+			vim.keymap.set("n", "<leader>ss", builtin.live_grep, { desc = "[S]earch for [W]ord by grep" })
 			vim.keymap.set("n", "<leader>sd", builtin.diagnostics, { desc = "[S]earch [D]iagnostics" })
 			vim.keymap.set("n", "<leader>sr", builtin.resume, { desc = "[S]earch [R]esume" })
 			vim.keymap.set("n", "<leader>s.", builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
@@ -826,7 +861,15 @@ require("lazy").setup({
 			-- Shortcut for searching your Neovim configuration files
 			vim.keymap.set("n", "<leader>sn", function()
 				builtin.find_files({ cwd = vim.fn.stdpath("config") })
-			end, { desc = "[S]earch [N]eovim files" })
+			end, { desc = "[S]earch [N]eovim config" })
+
+			vim.keymap.set("n", "<leader>sh", function()
+				builtin.find_files({ cwd = vim.fn.expand("~/.config/hypr") })
+			end, { desc = "[S]earch [H]yprland config" })
+
+			vim.keymap.set("n", "<leader>sc", function()
+				builtin.find_files({ cwd = vim.fn.expand("~/.config/") })
+			end, { desc = "[S]earch all [C]onfig files" })
 		end,
 	},
 
@@ -871,7 +914,7 @@ require("lazy").setup({
 			require("mason").setup()
 			require("mason-lspconfig").setup({
 				-- These are lspconfig server names (NOT Mason package names)
-				ensure_installed = { "lua_ls", "ts_ls", "jsonls", "jdtls" },
+				ensure_installed = { "lua_ls", "ts_ls", "jsonls", "gopls" },
 			})
 
 			-- Mason tool installer (these are Mason package names)
@@ -884,6 +927,9 @@ require("lazy").setup({
 					"prettierd",
 					"json-lsp",
 					"google-java-format",
+					"gopls",
+					"goimports",
+					"gofumpt",
 				},
 			})
 
@@ -967,7 +1013,27 @@ require("lazy").setup({
 		end,
 	},
 
-	{ -- Autoformat
+	-- Go (gopls)
+	setup_server("gopls", {
+		settings = {
+			gopls = {
+				gofumpt = true,
+				staticcheck = true,
+				analyses = {
+					unusedparams = true,
+					shadow = true,
+				},
+				hints = {
+					assignVariableTypes = true,
+					compositeLiteralFields = true,
+					constantValues = true,
+					functionTypeParameters = true,
+					parameterNames = true,
+					rangeVariableTypes = true,
+				},
+			},
+		},
+	})({ -- Autoformat
 		"stevearc/conform.nvim",
 		event = { "BufWritePre" },
 		cmd = { "ConformInfo" },
@@ -1000,6 +1066,14 @@ require("lazy").setup({
 			formatters_by_ft = {
 				lua = { "stylua" },
 				java = { "google-java-format" },
+				javascript = { "prettierd", "prettier", stop_after_first = true },
+				javascriptreact = { "prettierd", "prettier", stop_after_first = true },
+				typescript = { "prettierd", "prettier", stop_after_first = true },
+				typescriptreact = { "prettierd", "prettier", stop_after_first = true },
+				json = { "prettierd", "prettier", stop_after_first = true },
+				jsonc = { "prettierd", "prettier", stop_after_first = true },
+				go = { "prettierd", "prettier", stop_after_first = true },
+
 				-- Conform can also run multiple formatters sequentially
 				-- python = { "isort", "black" },
 				--
@@ -1007,7 +1081,7 @@ require("lazy").setup({
 				-- javascript = { "prettierd", "prettier", stop_after_first = true },
 			},
 		},
-	},
+	}),
 
 	{ -- Autocompletion
 		"saghen/blink.cmp",
@@ -1168,6 +1242,7 @@ require("lazy").setup({
 					"diff",
 					"html",
 					"lua",
+					"go",
 					"markdown",
 					"markdown_inline",
 					"query",
@@ -1182,7 +1257,6 @@ require("lazy").setup({
 					"json",
 				},
 				highlight = { enable = true },
-				indent = { enable = true },
 			})
 		end,
 	},
